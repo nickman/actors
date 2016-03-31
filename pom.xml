@@ -49,11 +49,6 @@
       <version>${quasar.version}</version>
     </dependency>
 
-	<dependency>
-	  <groupId>com.betfair.net.java.opendmk</groupId>
-	  <artifactId>jmx-optional</artifactId>
-	  <version>1.0-b02</version>
-	</dependency>
 
     <dependency>
       <groupId>co.paralleluniverse</groupId>
@@ -78,6 +73,13 @@
 	    <artifactId>tsdbex-sqlbinder</artifactId>
 	    <version>0.0.1-SNAPSHOT</version>
     </dependency>
+
+    <dependency>
+		<groupId>com.heliosapm.utils</groupId>
+		<artifactId>heliosutils</artifactId>
+		<version>1.0-SNAPSHOT</version>
+    </dependency>
+
 
 		<dependency>
 		  <groupId>org.slf4j</groupId>

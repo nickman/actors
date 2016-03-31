@@ -22,6 +22,8 @@ import java.math.BigDecimal;
 import java.sql.RowId;
 import java.util.Date;
 
+import co.paralleluniverse.actors.ActorRef;
+
 /**
  * <p>Title: PosAcct</p>
  * <p>Description: Defines the actor attributes and operations</p> 
@@ -37,5 +39,9 @@ public interface PosAcct {
 	public BigDecimal getBalance();
 	public Date getCreateDate();
 	public Date getUpdateDate();
+	public void deposit(BigDecimal amt);
+	public void withdraw(BigDecimal amt);
+	public void blowUp() throws Throwable;
+	public void setActorRef(ActorRef ref);
 	
 }

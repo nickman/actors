@@ -19,7 +19,7 @@
 		<logback.version>1.0.13</logback.version>
 		<quasar.version>0.7.4</quasar.version>
 		<hikari.version>2.4.5</hikari.version>
-		<oracle.version>12.1.0.2</oracle.version>
+		<oracle.version>12.1.0.2</oracle.version>  <!-- 12.1.0.2   11.2.0.4 -->
 		<metrics.version>3.1.2</metrics.version>
 		<!-- Plugin Versions -->
 		<jar-plugin.version>2.3</jar-plugin.version>

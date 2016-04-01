@@ -100,8 +100,8 @@ public class ConnectionPool {
 		//config.setJdbcUrl("jdbc:oracle:thin:@//leopard:1521/XE");
 		//config.setJdbcUrl("jdbc:oracle:thin:@//localhost:1521/XE");
 		config.setMetricRegistry(registry);
-		//config.setJdbcUrl("jdbc:oracle:thin:@//localhost:1521/XE");
-		config.setJdbcUrl("jdbc:oracle:thin:@//10.22.114.37:1521/ORCL");
+		config.setJdbcUrl("jdbc:oracle:thin:@//localhost:1521/XE");
+		//config.setJdbcUrl("jdbc:oracle:thin:@//10.22.114.37:1521/ORCL");
 		//config.setJdbcUrl("jdbc:oracle:thin:@(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=ECS))(failover_mode=(type=select)(method=basic))(ADDRESS_LIST=(load_balance=off)(failover=on)(ADDRESS=(PROTOCOL=TCP)(HOST=10.5.202.163)(PORT=1521))(ADDRESS=(PROTOCOL=TCP)(HOST=10.5.202.161)(PORT=1521))(ADDRESS=(PROTOCOL=TCP)(HOST=10.5.202.162)(PORT=1521))))");
 		
 		
@@ -118,6 +118,8 @@ public class ConnectionPool {
 		config.setRegisterMbeans(true);
 		config.setPoolName("TQReactorPool");
 		dataSource = new HikariDataSource(config);
+		dataSource.setAutoCommit(true);
+		dataSource.validate();
 		sqlWorker = SQLWorker.getInstance(dataSource);
 		
 	}

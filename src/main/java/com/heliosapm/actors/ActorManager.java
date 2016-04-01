@@ -26,14 +26,12 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.heliosapm.utils.io.StdInCommandHandler;
-import com.heliosapm.utils.jmx.JMXHelper;
-import com.heliosapm.utils.time.SystemClock;
-import com.heliosapm.utils.time.SystemClock.ElapsedTime;
-
 import co.paralleluniverse.actors.Actor;
 import co.paralleluniverse.actors.ActorBuilder;
 import co.paralleluniverse.actors.ActorRef;
+import co.paralleluniverse.actors.ActorUtil;
+import co.paralleluniverse.actors.MailboxConfig;
+import co.paralleluniverse.actors.ShutdownMessage;
 import co.paralleluniverse.actors.behaviors.ProxyServerActor;
 import co.paralleluniverse.actors.behaviors.Supervisor;
 import co.paralleluniverse.actors.behaviors.Supervisor.ChildMode;
@@ -41,6 +39,12 @@ import co.paralleluniverse.actors.behaviors.Supervisor.ChildSpec;
 import co.paralleluniverse.actors.behaviors.SupervisorActor;
 import co.paralleluniverse.actors.behaviors.SupervisorActor.RestartStrategy;
 import co.paralleluniverse.fibers.SuspendExecution;
+import co.paralleluniverse.strands.channels.Channels.OverflowPolicy;
+
+import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.time.SystemClock;
+import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 
 
 /**
@@ -103,7 +107,8 @@ public class ActorManager {
 				PosAcct pa = getInstance().posAccts.values().iterator().next();
 				LOG.info("Blowing Up: [{}] : [{}]", pa, ((ActorRef)pa).getName());
 				try {
-					pa.blowUp();
+					final ShutdownMessage message = new ShutdownMessage(null);
+					ActorUtil.sendOrInterrupt((ActorRef<?>) pa, message);					
 				} catch (Throwable ex) {
 					ex.printStackTrace(System.err);
 				}
@@ -148,16 +153,48 @@ public class ActorManager {
 	
 	protected PosAcct register(final PosAcct posAcct) {
 		@SuppressWarnings("resource")		
-		final ProxyServerActor proxy = new ProxyServerActor(
-				false, 		
+//		final ProxyServerActor proxy = new ProxyServerActor(
+//				false, 		
+//				posAcct,
+//				PosAcct.class
+//		) {
+//			/**  */
+//			private static final long serialVersionUID = 8869633974174149866L;
+//			@Override
+//			protected void init() throws InterruptedException, SuspendExecution {
+//				register();
+//				super.init();
+//			}
+//			@Override
+//			public String getName() {				
+//				return posAcct.getName();
+//			}
+//		};
+		// IDProxyServerActor(final String name, final MailboxConfig mailboxConfig, final boolean callOnVoidMethods, final Object target, final Class<?>... interfaces)
+		final IDProxyServerActor proxy = new IDProxyServerActor(
+				posAcct.getName(),
+				new MailboxConfig(10, OverflowPolicy.BACKOFF),
+				true, 		
 				posAcct,
 				PosAcct.class
-		);		
+		) {
+			/**  */
+			private static final long serialVersionUID = 8869633974174149866L;
+			@Override
+			protected void init() throws InterruptedException, SuspendExecution {
+				register();
+				super.init();
+			}
+			@Override
+			public String getName() {				
+				return posAcct.getName();
+			}
+		};
+		
 		
 		final ActorRef<?> actorRef = proxy.spawn();
 		posAcct.setActorRef(actorRef);
 		try {
-			proxy.register(posAcct.getName());
 			supervisor.addChild(new ChildSpec(
 					posAcct.getName(), mode,
 					maxRestarts, duration, durationUnit,

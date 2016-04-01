@@ -51,7 +51,7 @@ public class PosAcctImpl implements PosAcct {
 	public static final String NEW_INSERT_SQL = 
 			"INSERT INTO POSACCT " +
 			"(ID,NAME,BALANCE,CREATE_TS) VALUES " +
-			"(?,?,?,?) ";
+			"(?,?,?,?)";
 	
 	/** The SQL to insert a new PosAcct */
 	public static final String NEW_INSERT_RET_SQL = 

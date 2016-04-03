@@ -19,6 +19,7 @@ under the License.
 package com.heliosapm.actors;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.sql.RowId;
 import java.util.Date;
 
@@ -39,7 +40,7 @@ public interface PosAcct {
 	public BigDecimal getBalance();
 	public Date getCreateDate();
 	public Date getUpdateDate();
-	public void deposit(BigDecimal amt);
+	public void deposit(BigDecimal amt, Connection conn);
 	public void withdraw(BigDecimal amt);
 	public void blowUp() throws Throwable;
 	public void setActorRef(ActorRef ref);

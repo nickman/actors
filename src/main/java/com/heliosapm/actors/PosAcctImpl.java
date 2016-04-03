@@ -19,11 +19,15 @@ under the License.
 package com.heliosapm.actors;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.RowId;
 import java.sql.SQLException;
 import java.util.Date;
 import java.util.Iterator;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import co.paralleluniverse.actors.ActorRef;
 
@@ -43,6 +47,10 @@ public class PosAcctImpl implements PosAcct {
 	private Date createDate;
 	private Date updateDate;
 	private ActorRef ref = null;
+	
+	/** Static class logger */
+	private static final Logger LOG = LoggerFactory.getLogger(PosAcctImpl.class);
+
 	
 	/** The PosAcct sequence name */
 	public static final String SEQ = "POSACCT_SEQ";
@@ -165,10 +173,13 @@ public class PosAcctImpl implements PosAcct {
 	 * @see com.heliosapm.actors.PosAcct#deposit(java.math.BigDecimal)
 	 */
 	@Override
-	public void deposit(BigDecimal amt) {
+	public void deposit(BigDecimal amt, Connection conn) {
+		final long start = System.currentTimeMillis();
 		balance = balance.add(amt);
 		updateDate = new Date(System.currentTimeMillis());
-		ConnectionPool.getInstance().getSQLWorker().executeUpdate("UPDATE POSACCT SET BALANCE = ?, UPDATE_TS = ? WHERE ROWID = ?", balance, new java.sql.Timestamp(updateDate.getTime()), rowId);
+		ConnectionPool.getInstance().getSQLWorker().executeUpdate(conn, "UPDATE POSACCT SET BALANCE = ?, UPDATE_TS = ? WHERE ROWID = ?", balance, new java.sql.Timestamp(updateDate.getTime()), rowId);
+		final long elapsed = System.currentTimeMillis() - start;
+		LOG.info("Deposited into [{}] in {} ms.", name, elapsed);
 	}
 	
 	/**

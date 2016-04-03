@@ -19,6 +19,7 @@ under the License.
 package com.heliosapm.actors;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
 
@@ -26,11 +27,15 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.time.SystemClock;
+import com.heliosapm.utils.time.SystemClock.ElapsedTime;
+
 import co.paralleluniverse.actors.Actor;
 import co.paralleluniverse.actors.ActorBuilder;
 import co.paralleluniverse.actors.ActorRef;
 import co.paralleluniverse.actors.ActorUtil;
-import co.paralleluniverse.actors.MailboxConfig;
 import co.paralleluniverse.actors.ShutdownMessage;
 import co.paralleluniverse.actors.behaviors.ProxyServerActor;
 import co.paralleluniverse.actors.behaviors.Supervisor;
@@ -39,12 +44,6 @@ import co.paralleluniverse.actors.behaviors.Supervisor.ChildSpec;
 import co.paralleluniverse.actors.behaviors.SupervisorActor;
 import co.paralleluniverse.actors.behaviors.SupervisorActor.RestartStrategy;
 import co.paralleluniverse.fibers.SuspendExecution;
-import co.paralleluniverse.strands.channels.Channels.OverflowPolicy;
-
-import com.heliosapm.utils.io.StdInCommandHandler;
-import com.heliosapm.utils.jmx.JMXHelper;
-import com.heliosapm.utils.time.SystemClock;
-import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 
 
 /**
@@ -83,6 +82,7 @@ public class ActorManager {
 	}
 	
 	public static void main(String[] args) {
+		// /home/nwhitehead/.m2/repository/co/paralleluniverse/quasar-core/0.7.4/quasar-core-0.7.4.jar
 		LOG.info("PosAcct Test");
 		ActorManager am = getInstance();
 		long seq = ConnectionPool.getInstance().getSQLWorker().nextSeq("POSACCT_SEQ");
@@ -91,7 +91,7 @@ public class ActorManager {
 			seq++;
 		}
 		LOG.info("Created 10 new accounts");
-		JMXHelper.fireUpJMXMPServer(9999);
+		JMXHelper.fireUpJMXMPServer(9998);
 		StdInCommandHandler.getInstance().registerCommand("dep", new Runnable(){
 			public void run() {
 				int x = 0;
@@ -125,9 +125,19 @@ public class ActorManager {
 		ActorManager am = getInstance();
 //		final ElapsedTime et = SystemClock.startClock();
 		int x = 0;
-		for(PosAcct pa: am.posAccts.values()) {
-			pa.deposit(new BigDecimal(1));
-			x++;
+		Connection conn = null;
+		try {
+			conn = ConnectionPool.getInstance().getConnection();
+			for(PosAcct pa: am.posAccts.values()) {
+				pa.deposit(new BigDecimal(1), conn);
+				x++;
+			}
+			try { conn.close(); } catch (Exception xo) {/* No Op */}
+		} catch (Exception ex) {
+			try { conn.close(); } catch (Exception xo) {/* No Op */}
+			throw new RuntimeException(ex);
+		} finally {
+//			try { conn.close(); } catch (Exception xo) {/* No Op */}
 		}
 //		LOG.info("{}", et.printAvg("Deposit", x));
 		return x;
@@ -153,7 +163,52 @@ public class ActorManager {
 	
 	protected PosAcct register(final PosAcct posAcct) {
 		@SuppressWarnings("resource")		
-//		final ProxyServerActor proxy = new ProxyServerActor(
+		final ProxyServerActor proxy = new ProxyServerActor(
+				true,   // void returns invoked sync 		
+				posAcct,
+				PosAcct.class
+		) {
+			/**  */
+			private static final long serialVersionUID = 8869633974174149866L;
+			@Override
+			protected void init() throws InterruptedException, SuspendExecution {
+				register();
+				super.init();
+			}
+			@Override
+			public String getName() {				
+				return posAcct.getName();
+			}
+			
+			@Override
+			protected Actor<Object, Void> reinstantiate() {
+				// TODO Auto-generated method stub
+				ProxyServerActor a =  new ProxyServerActor(
+						true,   // void returns invoked sync 		
+						posAcct,
+						PosAcct.class
+				) {
+					@Override
+					protected void init() throws InterruptedException, SuspendExecution {
+						register();
+						super.init();
+					}
+					@Override
+					public String getName() {				
+						return posAcct.getName();
+					}
+					
+				};
+				a.spawn();
+				
+				return a;
+				
+			}
+		};
+		// IDProxyServerActor(final String name, final MailboxConfig mailboxConfig, final boolean callOnVoidMethods, final Object target, final Class<?>... interfaces)
+//		final IDProxyServerActor proxy = new IDProxyServerActor(
+//				posAcct.getName(),
+//				new MailboxConfig(10, OverflowPolicy.BACKOFF),
 //				false, 		
 //				posAcct,
 //				PosAcct.class
@@ -170,26 +225,6 @@ public class ActorManager {
 //				return posAcct.getName();
 //			}
 //		};
-		// IDProxyServerActor(final String name, final MailboxConfig mailboxConfig, final boolean callOnVoidMethods, final Object target, final Class<?>... interfaces)
-		final IDProxyServerActor proxy = new IDProxyServerActor(
-				posAcct.getName(),
-				new MailboxConfig(10, OverflowPolicy.BACKOFF),
-				true, 		
-				posAcct,
-				PosAcct.class
-		) {
-			/**  */
-			private static final long serialVersionUID = 8869633974174149866L;
-			@Override
-			protected void init() throws InterruptedException, SuspendExecution {
-				register();
-				super.init();
-			}
-			@Override
-			public String getName() {				
-				return posAcct.getName();
-			}
-		};
 		
 		
 		final ActorRef<?> actorRef = proxy.spawn();

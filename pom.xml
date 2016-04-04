@@ -29,6 +29,7 @@
 		<hikari.version>2.4.5</hikari.version>
 		<oracle.version>12.1.0.2</oracle.version>  <!-- 12.1.0.2   11.2.0.4 -->
 		<metrics.version>3.1.2</metrics.version>
+		<narayana.version>5.3.2.Final</narayana.version>
 		<!-- Plugin Versions -->
 		<jar-plugin.version>2.3</jar-plugin.version>
 		<source-plugin.version>2.2</source-plugin.version>
@@ -56,6 +57,13 @@
       <artifactId>quasar-core</artifactId>
       <version>${quasar.version}</version>
     </dependency>
+
+	<dependency>
+	  <groupId>org.jboss.narayana.stm</groupId>
+	  <artifactId>stm</artifactId>
+	  <version>${narayana.version}</version>
+	</dependency>
+
 
 
     <dependency>

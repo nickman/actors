@@ -23,16 +23,25 @@ import java.sql.SQLException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import javax.sql.ConnectionEvent;
+import javax.sql.ConnectionEventListener;
 import javax.sql.DataSource;
+import javax.transaction.Status;
+import javax.transaction.Transaction;
+import javax.transaction.TransactionManager;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.arjuna.ats.arjuna.common.CoreEnvironmentBeanException;
+import com.arjuna.ats.arjuna.common.arjPropertyManager;
 import com.codahale.metrics.JmxReporter;
 import com.codahale.metrics.MetricRegistry;
 import com.heliosapm.tsdbex.sqlbinder.SQLWorker;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+
+import oracle.jdbc.OracleConnection;
 
 
 /**
@@ -53,7 +62,10 @@ public class ConnectionPool {
 	/** The type map applied to all connections */
 	private final Map<String, Class<?>> typeMap = new ConcurrentHashMap<String, Class<?>>();
 	
+	private static final InheritableThreadLocal<Connection> LOCAL_CONNECTION = new InheritableThreadLocal<Connection>(); 
+	
 	final HikariDataSource dataSource;
+	final TransactionManager txManager;
 	
 	/**
 	 * @param iface
@@ -65,6 +77,37 @@ public class ConnectionPool {
 		return dataSource.unwrap(iface);
 	}
 
+	public static Connection setLocalConnection() {
+		Connection conn = LOCAL_CONNECTION.get();
+		if(conn!=null) {
+			LOG.warn("Local Connection Found Open...");
+			try { conn.close(); } catch (Exception ex) {/* No Op */}
+		}
+		conn = getInstance().getConnection();
+		LOCAL_CONNECTION.set(conn);
+		return conn;
+	}
+	
+	public static void closeLocalConnection() {
+		Connection conn = LOCAL_CONNECTION.get();
+		if(conn!=null) {			
+			try { conn.close(); } catch (Exception ex) {/* No Op */}
+		} else {
+			LOG.warn("No Local Connection Found...");
+		}		
+	}
+	
+	public static Connection getLocalConnection(final boolean create) {
+		Connection conn = LOCAL_CONNECTION.get();
+		if(conn==null) {			
+			if(create) {
+				return setLocalConnection();
+			} else {
+				throw new IllegalStateException("No local connection set");
+			}
+		}
+		return conn;
+	}
 
 
 	final MetricRegistry registry;
@@ -89,27 +132,37 @@ public class ConnectionPool {
 	}
 	
 	private ConnectionPool() {
+		try {
+			arjPropertyManager.getCoreEnvironmentBean().setNodeIdentifier("1");
+			txManager = com.arjuna.ats.jta.TransactionManager.transactionManager();
+		} catch (CoreEnvironmentBeanException e) {
+			LOG.error("Failed to initialize arjuna", e);
+			throw new RuntimeException(e);
+		}
 		registry = new MetricRegistry();
 		reporter = JmxReporter.forRegistry(registry).build();
 		reporter.start();
 		
 		// ==== known type mappings 
 		HikariConfig config = new HikariConfig();
-		config.setDriverClassName("oracle.jdbc.OracleDriver");
+//		config.setDriverClassName("oracle.jdbc.OracleDriver");
+		config.setDataSourceClassName("oracle.jdbc.xa.client.OracleXADataSource");
 		//config.setJdbcUrl("jdbc:oracle:thin:@//tporacle:1521/ORCL");
 		//config.setJdbcUrl("jdbc:oracle:thin:@//leopard:1521/XE");
 		//config.setJdbcUrl("jdbc:oracle:thin:@//localhost:1521/XE");
 		config.setMetricRegistry(registry);
-		config.setJdbcUrl("jdbc:oracle:thin:@//localhost:1521/XE");
-		//config.setJdbcUrl("jdbc:oracle:thin:@//10.22.114.37:1521/ORCL");
+//		config.setJdbcUrl("jdbc:oracle:thin:@//localhost:1521/XE");
+//		config.setJdbcUrl("jdbc:oracle:thin:@//10.22.114.37:1521/ORCL");
+//		config.setJdbcUrl("jdbc:oracle:thin:@//10.22.114.37:1521/ORCL");
 		//config.setJdbcUrl("jdbc:oracle:thin:@(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=ECS))(failover_mode=(type=select)(method=basic))(ADDRESS_LIST=(load_balance=off)(failover=on)(ADDRESS=(PROTOCOL=TCP)(HOST=10.5.202.163)(PORT=1521))(ADDRESS=(PROTOCOL=TCP)(HOST=10.5.202.161)(PORT=1521))(ADDRESS=(PROTOCOL=TCP)(HOST=10.5.202.162)(PORT=1521))))");
 		
 		
 		config.setUsername("tqreactor");
 		config.setPassword("tq");
-		config.addDataSourceProperty("cachePrepStmts", "true");
-		config.addDataSourceProperty("prepStmtCacheSize", "250");
-		config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
+//		config.addDataSourceProperty("cachePrepStmts", "true");
+//		config.addDataSourceProperty("prepStmtCacheSize", "250");
+//		config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
+		config.addDataSourceProperty("URL", "jdbc:oracle:thin:@//10.22.114.37:1521/ORCL");
 		config.setMaximumPoolSize(100);
 		config.setMinimumIdle(20);
 		config.setConnectionTestQuery("SELECT SYSDATE FROM DUAL");
@@ -117,6 +170,7 @@ public class ConnectionPool {
 		config.setAutoCommit(false);
 		config.setRegisterMbeans(true);
 		config.setPoolName("TQReactorPool");
+		config.setAutoCommit(false);
 		dataSource = new HikariDataSource(config);
 		dataSource.setAutoCommit(true);
 		dataSource.validate();
@@ -141,12 +195,32 @@ public class ConnectionPool {
 
 	
 	public Connection getConnection() {
+		
 		try {
-			final Connection conn = dataSource.getConnection();
-			final Map<String, Class<?>> tm = conn.getTypeMap();
-			tm.putAll(typeMap);
-			conn.setTypeMap(tm);
-			return conn;
+			Transaction tx = txManager.getTransaction();
+			if(tx==null || tx.getStatus()==Status.STATUS_NO_TRANSACTION) {
+				txManager.begin();
+				tx = txManager.getTransaction();
+			}
+			final OracleConnection conn = dataSource.getConnection().unwrap(OracleConnection.class);
+			final Transaction ftx = txManager.getTransaction();
+			
+//			conn.addConnectionEventListener(new ConnectionEventListener() {
+//				@Override
+//				public void connectionErrorOccurred(ConnectionEvent event) {
+//					/* No Op */
+//				}
+//				@Override
+//				public void connectionClosed(final ConnectionEvent event) {
+//					try {
+//						ftx.commit();
+//					} catch (Exception ex) {
+//						LOG.error("Failed to commit TX", ex);
+//					}
+//				}
+//			});
+//			tx.enlistResource(conn.getXAResource());
+			return conn; //.getConnection();
 		} catch (Exception ex) {
 			throw new RuntimeException(ex);
 		}

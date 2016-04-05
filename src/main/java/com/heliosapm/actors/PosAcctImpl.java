@@ -26,6 +26,11 @@ import java.sql.SQLException;
 import java.util.Date;
 import java.util.Iterator;
 
+import org.jboss.stm.annotations.LockFree;
+import org.jboss.stm.annotations.ReadLock;
+import org.jboss.stm.annotations.State;
+import org.jboss.stm.annotations.TransactionFree;
+import org.jboss.stm.annotations.WriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,9 +47,13 @@ import co.paralleluniverse.actors.ActorRef;
 public class PosAcctImpl implements PosAcct {
 	private final RowId rowId;
 	private final long posAcctId;
+	@State
 	private String name;
+	@State
 	private BigDecimal balance;
+	@State
 	private Date createDate;
+	@State
 	private Date updateDate;
 	private ActorRef ref = null;
 	
@@ -173,8 +182,10 @@ public class PosAcctImpl implements PosAcct {
 	 * @see com.heliosapm.actors.PosAcct#deposit(java.math.BigDecimal)
 	 */
 	@Override
-	public void deposit(BigDecimal amt, Connection conn) {
+	@WriteLock
+	public void deposit(BigDecimal amt) {
 		final long start = System.currentTimeMillis();
+		final Connection conn = ConnectionPool.getLocalConnection(false);
 		balance = balance.add(amt);
 		updateDate = new Date(System.currentTimeMillis());
 		ConnectionPool.getInstance().getSQLWorker().executeUpdate(conn, "UPDATE POSACCT SET BALANCE = ?, UPDATE_TS = ? WHERE ROWID = ?", balance, new java.sql.Timestamp(updateDate.getTime()), rowId);
@@ -187,11 +198,19 @@ public class PosAcctImpl implements PosAcct {
 	 * @see com.heliosapm.actors.PosAcct#withdraw(java.math.BigDecimal)
 	 */
 	@Override
+	@WriteLock
 	public void withdraw(BigDecimal amt) {
+		final long start = System.currentTimeMillis();
+		final Connection conn = ConnectionPool.getLocalConnection(false);		
 		balance = balance.subtract(amt);
-		ConnectionPool.getInstance().getSQLWorker().executeUpdate("UPDATE POSACCT SET BALANCE = ?, UPDATE_TS = ? WHERE ROWID = ?", balance, new java.sql.Timestamp(updateDate.getTime()), rowId);		
+		updateDate = new Date(System.currentTimeMillis());
+		ConnectionPool.getInstance().getSQLWorker().executeUpdate(conn, "UPDATE POSACCT SET BALANCE = ?, UPDATE_TS = ? WHERE ROWID = ?", balance, new java.sql.Timestamp(updateDate.getTime()), rowId);
+		final long elapsed = System.currentTimeMillis() - start;
+		LOG.info("Withdrew from [{}] in {} ms.", name, elapsed);		
 	}
 	
+	@TransactionFree
+	@LockFree
 	public void blowUp() throws Throwable  {
 		ref.close();
 	}
@@ -201,36 +220,44 @@ public class PosAcctImpl implements PosAcct {
 	 * @see java.lang.Object#toString()
 	 */
 	@Override
+	@TransactionFree
+	@LockFree	
 	public String toString() {
 		return "PosAcct: [" + name + "/" + posAcctId + "]";
 	}
 
 	@Override
+	@ReadLock
 	public RowId getRowId() {
 		return rowId;
 	}
 
 	@Override
+	@ReadLock
 	public long getPosAcctId() {
 		return posAcctId;
 	}
 
 	@Override
+	@ReadLock
 	public String getName() {
 		return name;
 	}
 
 	@Override
+	@ReadLock
 	public BigDecimal getBalance() {
 		return balance;
 	}
 
 	@Override
+	@ReadLock
 	public Date getCreateDate() {
 		return createDate;
 	}
 
 	@Override
+	@ReadLock
 	public Date getUpdateDate() {
 		return updateDate;
 	}

@@ -23,6 +23,8 @@ import java.sql.Connection;
 import java.sql.RowId;
 import java.util.Date;
 
+import org.jboss.stm.annotations.Transactional;
+
 import co.paralleluniverse.actors.ActorRef;
 
 /**
@@ -32,7 +34,7 @@ import co.paralleluniverse.actors.ActorRef;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.actors.PosAcct</code></p>
  */
-
+@Transactional
 public interface PosAcct {
 	public RowId getRowId();
 	public long getPosAcctId();
@@ -40,7 +42,7 @@ public interface PosAcct {
 	public BigDecimal getBalance();
 	public Date getCreateDate();
 	public Date getUpdateDate();
-	public void deposit(BigDecimal amt, Connection conn);
+	public void deposit(BigDecimal amt);
 	public void withdraw(BigDecimal amt);
 	public void blowUp() throws Throwable;
 	public void setActorRef(ActorRef ref);

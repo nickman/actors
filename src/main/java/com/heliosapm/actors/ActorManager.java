@@ -125,18 +125,17 @@ public class ActorManager {
 		ActorManager am = getInstance();
 //		final ElapsedTime et = SystemClock.startClock();
 		int x = 0;
-		Connection conn = null;
 		try {
-			conn = ConnectionPool.getInstance().getConnection();
+			ConnectionPool.setLocalConnection();
 			for(PosAcct pa: am.posAccts.values()) {
-				pa.deposit(new BigDecimal(1), conn);
+				pa.deposit(new BigDecimal(1));
 				x++;
-			}
-			try { conn.close(); } catch (Exception xo) {/* No Op */}
+			}			
 		} catch (Exception ex) {
-			try { conn.close(); } catch (Exception xo) {/* No Op */}
+//			try { conn.close(); } catch (Exception xo) {/* No Op */}
 			throw new RuntimeException(ex);
 		} finally {
+			try { ConnectionPool.closeLocalConnection(); } catch (Exception xo) {/* No Op */}
 //			try { conn.close(); } catch (Exception xo) {/* No Op */}
 		}
 //		LOG.info("{}", et.printAvg("Deposit", x));

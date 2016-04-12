@@ -185,10 +185,10 @@ public class PosAcctImpl implements PosAcct {
 	@WriteLock
 	public void deposit(BigDecimal amt) {
 		final long start = System.currentTimeMillis();
-		final Connection conn = ConnectionPool.getLocalConnection(false);
+//		final Connection conn = ConnectionPool.getInstance().getXAConnection().getConnection();
 		balance = balance.add(amt);
 		updateDate = new Date(System.currentTimeMillis());
-		ConnectionPool.getInstance().getSQLWorker().executeUpdate(conn, "UPDATE POSACCT SET BALANCE = ?, UPDATE_TS = ? WHERE ROWID = ?", balance, new java.sql.Timestamp(updateDate.getTime()), rowId);
+		ConnectionPool.getInstance().getXASQLWorker().executeUpdate("UPDATE POSACCT SET BALANCE = ?, UPDATE_TS = ? WHERE ROWID = ?", balance, new java.sql.Timestamp(updateDate.getTime()), rowId);
 		final long elapsed = System.currentTimeMillis() - start;
 		LOG.info("Deposited into [{}] in {} ms.", name, elapsed);
 	}

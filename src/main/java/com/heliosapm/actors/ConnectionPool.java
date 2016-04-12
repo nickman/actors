@@ -18,30 +18,35 @@ under the License.
  */
 package com.heliosapm.actors;
 
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import javax.sql.ConnectionEvent;
-import javax.sql.ConnectionEventListener;
 import javax.sql.DataSource;
+import javax.sql.XAConnection;
 import javax.transaction.Status;
 import javax.transaction.Transaction;
 import javax.transaction.TransactionManager;
+import javax.transaction.TransactionSynchronizationRegistry;
+
+import oracle.jdbc.OracleConnection;
+import oracle.jdbc.xa.client.OracleXADataSource;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.arjuna.ats.arjuna.common.CoreEnvironmentBeanException;
 import com.arjuna.ats.arjuna.common.arjPropertyManager;
+import com.arjuna.ats.jta.common.JTAEnvironmentBean;
+import com.arjuna.ats.jta.common.jtaPropertyManager;
 import com.codahale.metrics.JmxReporter;
 import com.codahale.metrics.MetricRegistry;
 import com.heliosapm.tsdbex.sqlbinder.SQLWorker;
+import com.heliosapm.utils.jmx.JMXHelper;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-
-import oracle.jdbc.OracleConnection;
 
 
 /**
@@ -66,6 +71,9 @@ public class ConnectionPool {
 	
 	final HikariDataSource dataSource;
 	final TransactionManager txManager;
+	final TransactionSynchronizationRegistry txRegistry;
+	final OracleXADataSource xaDataSource;
+	///home/nwhitehead/3projects/jbosstm/jca-and-tomcat/src/main/java/org/jboss/narayana/quickstart/jca/listener/ServletContextListenerImpl.java
 	
 	/**
 	 * @param iface
@@ -113,6 +121,7 @@ public class ConnectionPool {
 	final MetricRegistry registry;
 	final JmxReporter reporter;
 	final SQLWorker sqlWorker;
+	final SQLWorker xaSqlWorker;
 	
 	
 	public static ConnectionPool getInstance() {
@@ -133,16 +142,34 @@ public class ConnectionPool {
 	
 	private ConnectionPool() {
 		try {
+      System.setProperty("java.naming.factory.initial", "org.jnp.interfaces.NamingContextFactory");
+      System.setProperty("java.naming.factory.url.pkgs", "org.jboss.naming:org.jnp.interfaces");
+//      LOG.info("JNP: {}", org.jnp.server.Main.class.getProtectionDomain().getCodeSource().getLocation());
+//      org.jnp.server.Main main = new org.jnp.server.Main();
+//      NamingBean naming = new NamingBeanImpl();
+//      main.setNamingInfo(naming);
+//      main.start();
 			arjPropertyManager.getCoreEnvironmentBean().setNodeIdentifier("1");
 			txManager = com.arjuna.ats.jta.TransactionManager.transactionManager();
-		} catch (CoreEnvironmentBeanException e) {
+			final JTAEnvironmentBean envBean = jtaPropertyManager.getJTAEnvironmentBean();
+			JMXHelper.registerMBean(envBean, JMXHelper.objectName("com.arjuna:service=JTAEnvironmentBean"));
+			txRegistry = jtaPropertyManager.getJTAEnvironmentBean().getTransactionSynchronizationRegistry();
+//			JNDIManager.bindJTAImplementations(new InitialContext());
+//			LOG.info("JTA Impls Bound");
+			xaDataSource = new OracleXADataSource();
+			xaDataSource.setConnectionCacheName("OracleXAConnectionCache");
+			xaDataSource.setURL("jdbc:oracle:thin:@//localhost:1521/XE");
+			xaDataSource.setUser("tqreactor");
+			xaDataSource.setPassword("tq");
+			
+		} catch (Exception e) {
 			LOG.error("Failed to initialize arjuna", e);
 			throw new RuntimeException(e);
 		}
 		registry = new MetricRegistry();
 		reporter = JmxReporter.forRegistry(registry).build();
 		reporter.start();
-		
+		 
 		// ==== known type mappings 
 		HikariConfig config = new HikariConfig();
 //		config.setDriverClassName("oracle.jdbc.OracleDriver");
@@ -162,7 +189,8 @@ public class ConnectionPool {
 //		config.addDataSourceProperty("cachePrepStmts", "true");
 //		config.addDataSourceProperty("prepStmtCacheSize", "250");
 //		config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
-		config.addDataSourceProperty("URL", "jdbc:oracle:thin:@//10.22.114.37:1521/ORCL");
+//		config.addDataSourceProperty("URL", "jdbc:oracle:thin:@//10.22.114.37:1521/ORCL");
+		config.addDataSourceProperty("URL", "jdbc:oracle:thin:@//localhost:1521/XE");
 		config.setMaximumPoolSize(100);
 		config.setMinimumIdle(20);
 		config.setConnectionTestQuery("SELECT SYSDATE FROM DUAL");
@@ -175,6 +203,7 @@ public class ConnectionPool {
 		dataSource.setAutoCommit(true);
 		dataSource.validate();
 		sqlWorker = SQLWorker.getInstance(dataSource);
+		xaSqlWorker = SQLWorker.getInstance(xaDataSource);
 		
 	}
 	
@@ -182,8 +211,17 @@ public class ConnectionPool {
 		return dataSource;
 	}
 	
+	public DataSource getXADataSource() {
+		return xaDataSource;
+	}
+	
+	
 	public SQLWorker getSQLWorker() {
 		return sqlWorker;
+	}
+	
+	public SQLWorker getXASQLWorker() {
+		return xaSqlWorker;
 	}
 	
 	public void putMappingType(final String dbTypeName, final Class<?> type) {
@@ -192,7 +230,34 @@ public class ConnectionPool {
 		typeMap.put(dbTypeName, type);
 	}
 	
+	private static URL getURL(final String fileName) throws MalformedURLException {
+		return ConnectionPool.class.getClassLoader().getResource(fileName);
+	}
+	
+	public XAConnection getXAConnection() {
+		try {
+			Transaction tx = txManager.getTransaction();
+			if(tx==null || tx.getStatus()==Status.STATUS_NO_TRANSACTION) {
+				txManager.begin();
+				tx = txManager.getTransaction();
+			}
+			final XAConnection conn = xaDataSource.getXAConnection();
+			tx.enlistResource(conn.getXAResource());
+			
+			txRegistry.putResource(txRegistry.getTransactionKey(), conn);
+			return conn;
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
+		}
+	}
+	
+	public TransactionManager getTransactionManager() {
+		return txManager;
+	}
 
+	public TransactionSynchronizationRegistry getTransactionRegistry() {
+		return txRegistry;
+	}
 	
 	public Connection getConnection() {
 		
@@ -202,25 +267,7 @@ public class ConnectionPool {
 				txManager.begin();
 				tx = txManager.getTransaction();
 			}
-			final OracleConnection conn = dataSource.getConnection().unwrap(OracleConnection.class);
-			final Transaction ftx = txManager.getTransaction();
-			
-//			conn.addConnectionEventListener(new ConnectionEventListener() {
-//				@Override
-//				public void connectionErrorOccurred(ConnectionEvent event) {
-//					/* No Op */
-//				}
-//				@Override
-//				public void connectionClosed(final ConnectionEvent event) {
-//					try {
-//						ftx.commit();
-//					} catch (Exception ex) {
-//						LOG.error("Failed to commit TX", ex);
-//					}
-//				}
-//			});
-//			tx.enlistResource(conn.getXAResource());
-			return conn; //.getConnection();
+			return dataSource.getConnection();
 		} catch (Exception ex) {
 			throw new RuntimeException(ex);
 		}

@@ -23,6 +23,8 @@ import java.sql.Connection;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
 
+import javax.transaction.Transaction;
+
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -84,13 +86,14 @@ public class ActorManager {
 	public static void main(String[] args) {
 		// /home/nwhitehead/.m2/repository/co/paralleluniverse/quasar-core/0.7.4/quasar-core-0.7.4.jar
 		LOG.info("PosAcct Test");
+		final Connection conn = ConnectionPool.getInstance().getConnection();
 		ActorManager am = getInstance();
-		long seq = ConnectionPool.getInstance().getSQLWorker().nextSeq("POSACCT_SEQ");
-		for(int i = 0; i < 10; i++) {
-			am.newPosAcct("PosAcct#" + seq, 1);
-			seq++;
-		}
-		LOG.info("Created 10 new accounts");
+//		long seq = ConnectionPool.getInstance().getSQLWorker().nextSeq("POSACCT_SEQ");
+//		for(int i = 0; i < 10; i++) {
+//			am.newPosAcct("PosAcct#" + seq, 1);
+//			seq++;
+//		}
+//		LOG.info("Created 10 new accounts");
 		JMXHelper.fireUpJMXMPServer(9998);
 		StdInCommandHandler.getInstance().registerCommand("dep", new Runnable(){
 			public void run() {
@@ -125,13 +128,18 @@ public class ActorManager {
 		ActorManager am = getInstance();
 //		final ElapsedTime et = SystemClock.startClock();
 		int x = 0;
+		Transaction tx = null;
 		try {
-			ConnectionPool.setLocalConnection();
+			
+//			ConnectionPool.getInstance().getTransactionManager().begin();
+			tx = ConnectionPool.getInstance().getTransactionManager().getTransaction();
 			for(PosAcct pa: am.posAccts.values()) {
 				pa.deposit(new BigDecimal(1));
 				x++;
 			}			
+			tx.commit();
 		} catch (Exception ex) {
+//			tx.rollback();
 //			try { conn.close(); } catch (Exception xo) {/* No Op */}
 			throw new RuntimeException(ex);
 		} finally {

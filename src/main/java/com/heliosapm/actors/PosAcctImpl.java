@@ -185,6 +185,7 @@ public class PosAcctImpl implements PosAcct {
 	@WriteLock
 	public void deposit(BigDecimal amt) {
 		final long start = System.currentTimeMillis();
+		LOG.info("Deposit on TX: {}  Status: {}", TXManager.currentTransaction(), TXManager.currentTransactionState());
 //		final Connection conn = ConnectionPool.getInstance().getXAConnection().getConnection();
 		balance = balance.add(amt);
 		updateDate = new Date(System.currentTimeMillis());
@@ -213,6 +214,12 @@ public class PosAcctImpl implements PosAcct {
 	@LockFree
 	public void blowUp() throws Throwable  {
 		ref.close();
+	}
+	
+	@Override
+	public void runLockTest() {
+		// TODO Auto-generated method stub
+		
 	}
 	
 	/**

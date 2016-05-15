@@ -149,10 +149,7 @@ public class ConnectionPool {
 //      NamingBean naming = new NamingBeanImpl();
 //      main.setNamingInfo(naming);
 //      main.start();
-			arjPropertyManager.getCoreEnvironmentBean().setNodeIdentifier("1");
 			txManager = com.arjuna.ats.jta.TransactionManager.transactionManager();
-			final JTAEnvironmentBean envBean = jtaPropertyManager.getJTAEnvironmentBean();
-			JMXHelper.registerMBean(envBean, JMXHelper.objectName("com.arjuna:service=JTAEnvironmentBean"));
 			txRegistry = jtaPropertyManager.getJTAEnvironmentBean().getTransactionSynchronizationRegistry();
 //			JNDIManager.bindJTAImplementations(new InitialContext());
 //			LOG.info("JTA Impls Bound");

@@ -18,33 +18,17 @@ under the License.
  */
 package com.heliosapm.actors;
 
-import java.math.BigDecimal;
-import java.sql.Connection;
-import java.sql.RowId;
-import java.util.Date;
-
-import org.jboss.stm.annotations.Transactional;
-
-import co.paralleluniverse.actors.ActorRef;
+import co.paralleluniverse.fibers.SuspendExecution;
+import co.paralleluniverse.strands.concurrent.CountDownLatch;
 
 /**
- * <p>Title: PosAcct</p>
- * <p>Description: Defines the actor attributes and operations</p> 
+ * <p>Title: LockYo</p>
+ * <p>Description: </p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.actors.PosAcct</code></p>
+ * <p><code>com.heliosapm.actors.LockYo</code></p>
  */
-@Transactional
-public interface PosAcct {
-	public RowId getRowId();
-	public long getPosAcctId();
-	public String getName();
-	public BigDecimal getBalance();
-	public Date getCreateDate();
-	public Date getUpdateDate();
-	public void deposit(BigDecimal amt);
-	public void withdraw(BigDecimal amt);
-	public void blowUp() throws Throwable;
-	public void setActorRef(ActorRef ref);
-	public void runLockTest();
+
+public interface LockYo {
+	public void runLockTest(final CountDownLatch latch) throws SuspendExecution;
 }

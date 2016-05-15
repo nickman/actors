@@ -29,6 +29,7 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.esotericsoftware.minlog.Log;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.time.SystemClock;
@@ -84,6 +85,10 @@ public class ActorManager {
 	}
 	
 	public static void main(String[] args) {
+		
+	}
+	
+	public static void mainx(String[] args) {
 		// /home/nwhitehead/.m2/repository/co/paralleluniverse/quasar-core/0.7.4/quasar-core-0.7.4.jar
 		LOG.info("PosAcct Test");
 		final Connection conn = ConnectionPool.getInstance().getConnection();
@@ -132,11 +137,14 @@ public class ActorManager {
 		try {
 			
 //			ConnectionPool.getInstance().getTransactionManager().begin();
-			tx = ConnectionPool.getInstance().getTransactionManager().getTransaction();
+			TXManager.begin();
+			tx = TXManager.currentTransaction();
+			LOG.info("Started TX: {}:{}",TXManager.currentTransactionUid(), TXManager.currentTransactionState());
 			for(PosAcct pa: am.posAccts.values()) {
 				pa.deposit(new BigDecimal(1));
 				x++;
 			}			
+			LOG.info("Commiting TX: {}:{}",TXManager.currentTransactionUid(), TXManager.currentTransactionState());
 			tx.commit();
 		} catch (Exception ex) {
 //			tx.rollback();

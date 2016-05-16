@@ -18,23 +18,16 @@ under the License.
  */
 package com.heliosapm.actors;
 
-import java.util.concurrent.atomic.AtomicLong;
-
 import javax.transaction.Status;
 import javax.transaction.Synchronization;
-import javax.transaction.Transaction;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.heliosapm.utils.io.StdInCommandHandler;
-import com.heliosapm.utils.jmx.JMXHelper;
 
 import co.paralleluniverse.actors.MailboxConfig;
 import co.paralleluniverse.actors.behaviors.ProxyServerActor;
 import co.paralleluniverse.actors.behaviors.Server;
 import co.paralleluniverse.fibers.Fiber;
-import co.paralleluniverse.fibers.FiberFactory;
 import co.paralleluniverse.fibers.SuspendExecution;
 import co.paralleluniverse.strands.Strand;
 import co.paralleluniverse.strands.SuspendableCallable;
@@ -65,8 +58,8 @@ public class LockYoImpl implements LockYo {
 	public static void main(String[] args) {
 		LOG.info("Transaction Test");
 		JMXHelper.fireUpJMXMPServer(9998);
-//		final FiberFactory ff = new TXFiberFactory("LockYoFiber");
-		final FiberFactory ff = new FiberFactory() {
+		final FiberFactory ff = new TXFiberFactory("LockYoFiber");
+//		final FiberFactory ff = new FiberFactory() {
 			final AtomicLong serial = new AtomicLong();
 			@Override
 			public <T> Fiber<T> newFiber(SuspendableCallable<T> target) {

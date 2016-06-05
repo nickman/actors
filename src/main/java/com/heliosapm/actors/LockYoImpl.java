@@ -20,17 +20,22 @@ package com.heliosapm.actors;
 
 import javax.transaction.Status;
 import javax.transaction.Synchronization;
+import javax.transaction.Transaction;
+
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
 
 import co.paralleluniverse.actors.MailboxConfig;
 import co.paralleluniverse.actors.behaviors.ProxyServerActor;
 import co.paralleluniverse.actors.behaviors.Server;
 import co.paralleluniverse.fibers.Fiber;
+import co.paralleluniverse.fibers.FiberFactory;
 import co.paralleluniverse.fibers.SuspendExecution;
 import co.paralleluniverse.strands.Strand;
-import co.paralleluniverse.strands.SuspendableCallable;
 import co.paralleluniverse.strands.channels.Channels.OverflowPolicy;
 import co.paralleluniverse.strands.concurrent.CountDownLatch;
 
@@ -45,6 +50,8 @@ import co.paralleluniverse.strands.concurrent.CountDownLatch;
 public class LockYoImpl implements LockYo {
 	/** Static class logger */
 	private static final Logger LOG = LoggerFactory.getLogger(LockYoImpl.class);
+	
+	 
 
 	/**
 	 * Creates a new LockYoImpl
@@ -59,17 +66,17 @@ public class LockYoImpl implements LockYo {
 		LOG.info("Transaction Test");
 		JMXHelper.fireUpJMXMPServer(9998);
 		final FiberFactory ff = new TXFiberFactory("LockYoFiber");
-//		final FiberFactory ff = new FiberFactory() {
-			final AtomicLong serial = new AtomicLong();
-			@Override
-			public <T> Fiber<T> newFiber(SuspendableCallable<T> target) {
-				
-				final Fiber<T> f = new Fiber<T>(target);
-				f.setName("YoFiber#" + serial.incrementAndGet());
-				System.err.println("Created fiber [" + f + "]");
-				return f;
-			}
-		};
+//		//final FiberFactory ff = new FiberFactory() {
+//			final AtomicLong serial = new AtomicLong();
+//			@Override
+//			public <T> Fiber<T> newFiber(SuspendableCallable<T> target) {
+//				
+//				final Fiber<T> f = new Fiber<T>(target);
+//				f.setName("YoFiber#" + serial.incrementAndGet());
+//				System.err.println("Created fiber [" + f + "]");
+//				return f;
+//			}
+//		};
 		final MailboxConfig mbox = new MailboxConfig(1024, OverflowPolicy.THROW);
 		for(int x = 0; x < 5; x++) {
 			final String name = "LockYo#" + x;
@@ -103,9 +110,10 @@ public class LockYoImpl implements LockYo {
 	public void runLockTest(final CountDownLatch latch) throws SuspendExecution {
 		try {
 			TXManager.setTransactionTimeout(10);
-			TXManager.begin();			
+						
+			final Transaction tx = TXManager.strandBegin();
 			final String uid = TXManager.currentTransactionUid();
-			TXManager.currentTransaction().registerSynchronization(new Synchronization(){
+			tx.registerSynchronization(new Synchronization(){
 				@Override
 				public void afterCompletion(final int status) {
 					if(Status.STATUS_COMMITTED==status) {

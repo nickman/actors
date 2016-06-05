@@ -19,6 +19,7 @@ under the License.
 package com.heliosapm.actors;
 
 import java.lang.management.ManagementFactory;
+import java.lang.reflect.Method;
 
 import javax.transaction.HeuristicMixedException;
 import javax.transaction.HeuristicRollbackException;
@@ -30,11 +31,18 @@ import javax.transaction.Transaction;
 import javax.transaction.TransactionManager;
 import javax.transaction.TransactionSynchronizationRegistry;
 
+import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
+
 import com.arjuna.ats.arjuna.common.arjPropertyManager;
+import com.arjuna.ats.arjuna.coordinator.BasicAction;
+import com.arjuna.ats.internal.arjuna.thread.ThreadActionData;
 import com.arjuna.ats.internal.jta.transaction.arjunacore.TransactionImple;
 import com.arjuna.ats.jta.common.JTAEnvironmentBean;
 import com.arjuna.ats.jta.common.jtaPropertyManager;
 import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.reflect.PrivateAccessor;
+
+import co.paralleluniverse.strands.Strand;
 
 /**
  * <p>Title: TXManager</p>
@@ -79,7 +87,11 @@ public enum TXManager {
 	private static final TransactionManager txManager;
 	private static final TransactionSynchronizationRegistry txRegistry;
 	
+	/** com.arjuna.ats.arjuna.AtomicAction getAtomicAction() */
+	private static final Method atomicActionMethod = PrivateAccessor.findMethodFromClass(TransactionImple.class, "getAtomicAction");
+	
 	static {
+		atomicActionMethod.setAccessible(true);
 		try {
 			arjPropertyManager.getCoreEnvironmentBean().setNodeIdentifier(ManagementFactory.getRuntimeMXBean().getName().split("@")[0]);
 			txManager = com.arjuna.ats.jta.TransactionManager.transactionManager();
@@ -126,6 +138,14 @@ public enum TXManager {
 		}
 	}
 	
+	public static TXManager transactionState(final Transaction tx) {
+		try {
+			return tx==null ? NO_TRANSACTION : decode(tx.getStatus());
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
+		}		
+	}
+	
 
 	
 	/**
@@ -147,6 +167,9 @@ public enum TXManager {
 			System.out.println(tx.name() + ":" + tx.status);
 		}
 	}
+	
+	public static final NonBlockingHashMapLong<Transaction> suspendedTransactions = new NonBlockingHashMapLong<Transaction>();
+	public static final NonBlockingHashMapLong<Transaction> runningTransactions = new NonBlockingHashMapLong<Transaction>();
 
 	/**
 	 * @throws NotSupportedException
@@ -155,7 +178,42 @@ public enum TXManager {
 	 */
 	public static void begin() throws NotSupportedException, SystemException {
 		txManager.begin();
+		suspendedTransactions.put(Strand.currentStrand().getId(), currentTransaction());
 	}
+	
+	public static Transaction strandBegin() throws NotSupportedException, SystemException {
+		txManager.begin();
+		final Transaction tx = currentTransaction();
+		runningTransactions.put(Strand.currentStrand().getId(), tx);
+		System.out.println("Saved TX under key: [" + Strand.currentStrand().getId() + "], Type is: [" + Strand.isCurrentFiber() + "]");
+		return tx;
+	}
+	
+	public static Transaction strandSuspend(final Strand strand) throws NotSupportedException, SystemException {
+		final Transaction tx = runningTransactions.remove(strand.getId());
+		if(tx!=null) {
+			ThreadActionData.pushAction(getBasicAction(tx), false);
+			txManager.suspend();
+			suspendedTransactions.put(strand.getId(), tx);			
+		}
+		return tx;
+	}
+	
+	private static BasicAction getBasicAction(final Transaction tx) {
+		try {
+			return (BasicAction)atomicActionMethod.invoke(tx);
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
+		}
+	}
+	
+	public static void strandResume(final Strand strand) throws NotSupportedException, SystemException, InvalidTransactionException, IllegalStateException {
+		final Transaction tx = suspendedTransactions.get(strand.getId());
+		if(tx!=null) {
+			txManager.resume(tx);
+		}
+	}
+	
 
 	/**
 	 * @throws RollbackException

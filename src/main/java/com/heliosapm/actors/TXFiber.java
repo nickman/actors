@@ -55,37 +55,12 @@ public class TXFiber<V> extends Fiber<V> {
 	
 	@Override
 	protected void onParked() {
-		final TXManager txs = TXManager.currentTransactionState();
-		System.err.println("Parking\n\tFiber [" + getName() + "], \n\tThread [" + Thread.currentThread().getName() + "]\n\tTXState: [" + txs + "]");
-//		LOG.info("Parking [{}]", this);
-		if(txs!=TXManager.NO_TRANSACTION) {			
-			parks.increment();
-			unresumedParks.increment();
-			try {
-				final boolean init = currentTransaction==null;
-				if(init) {
-					TXManager.currentTransaction().registerSynchronization(new Synchronization(){
-						@Override
-						public void afterCompletion(final int status) {
-							if(Status.STATUS_COMMITTED==status) {
-								LOG.info("TX Committed:" + currentTransaction);
-								currentTransaction = null;
-							}
-						}
-						@Override
-						public void beforeCompletion() {
-							
-						}					
-						
-					}); System.err.println("Sync Registered");
-				}
-				currentTransaction = TXManager.suspend();
-			} catch (Exception ex) {
-				LOG.error("Failed to park", ex);
-				throw new RuntimeException(ex);
-			}
-		} else {
-			currentTransaction = null;
+		try {
+ 			final Transaction tx = TXManager.strandSuspend(this);
+			final TXManager txs = TXManager.transactionState(tx);
+			System.err.println("Parking\n\tFiber [" + getName() + "], \n\tThread [" + Thread.currentThread().getName() + "]\n\tTXState: [" + txs + "]");
+		} catch (Exception ex) {
+			LOG.error("Failed to park transaction", ex);
 		}
 		super.onParked();
 	}
@@ -93,19 +68,10 @@ public class TXFiber<V> extends Fiber<V> {
 	@Override
 	protected void onResume() throws SuspendExecution, InterruptedException {
 		super.onResume();
-//		LOG.info("Resuming [{}]", this);
-		System.err.println("Resuming Fiber [" + getName() + "]");
-		if(currentTransaction!=null) {
-			resumes.increment();
-			unresumedParks.decrement();
-			try {
-				TXManager.resume(currentTransaction);
-			} catch (Exception ex) {
-				LOG.error("Failed to resume", ex);
-				throw new RuntimeException(ex);
-			} finally {
-				currentTransaction = null;
-			}
+		try {
+			TXManager.strandResume(this);
+		} catch (Exception ex) {
+			LOG.error("Failed to resume transaction", ex);
 		}
 		
 	}

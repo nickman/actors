@@ -16,11 +16,9 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
  */
-package co.paralleluniverse.actors.behaviors;
+package com.heliosapm.actors;
 
 import java.util.concurrent.atomic.AtomicLong;
-
-import com.heliosapm.actors.TXFiber;
 
 import co.paralleluniverse.fibers.Fiber;
 import co.paralleluniverse.fibers.FiberFactory;
